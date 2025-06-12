@@ -1,153 +1,130 @@
 import pygame
 import sys
 
-# Constants
+# Initialize Pygame
+pygame.init()
+
+# Set up the screen
 SCREEN_WIDTH = 400
 SCREEN_HEIGHT = 300
 CELL_SIZE = 20
-FPS = 60
-BLACK = (0, 0, 0)
+
 WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
-BLUE = (0, 0, 255)
 
-# Initialize Pygame
-pygame.init()
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-clock = pygame.time.Clock()
+# Global targets list
+targets = []
 
-class Entity:
+class Box:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.target = False
+
+    def draw(self, screen):
+        # Determine the color based on current position
+        if (self.x, self.y) in targets:
+            color = GREEN
+        else:
+            color = RED
+        pygame.draw.rect(screen, color, 
+                         [self.x * CELL_SIZE, self.y * CELL_SIZE, 
+                          CELL_SIZE - 1, CELL_SIZE - 1])
+
+class Player:
     def __init__(self, x, y):
         self.x = x
         self.y = y
 
-class Player(Entity):
-    def draw(self):
-        pygame.draw.circle(screen, BLUE, (self.x * CELL_SIZE + CELL_SIZE//2, self.y * CELL_SIZE + CELL_SIZE//2), CELL_SIZE//3)
-
-class Box(Entity):
-    def __init__(self, x, y):
-        super().__init__(x, y)
-        self.target = False
-
-    def draw(self):
-        color = RED if not self.target else GREEN
-        pygame.draw.rect(screen, color, (self.x * CELL_SIZE + CELL_SIZE//4, self.y * CELL_SIZE + CELL_SIZE//4, CELL_SIZE//2, CELL_SIZE//2))
-
-class Wall(Entity):
-    def __init__(self, x, y):
-        super().__init__(x, y)
-        self.blocked = True
-
-    def draw(self):
-        pygame.draw.rect(screen, BLACK, (self.x * CELL_SIZE, self.y * CELL_SIZE, CELL_SIZE, CELL_SIZE))
+    def draw(self, screen):
+        pygame.draw.rect(screen, BLACK, 
+                         [self.x * CELL_SIZE, self.y * CELL_SIZE, 
+                          CELL_SIZE - 1, CELL_SIZE - 1])
 
 def create_level():
-    global player, boxes, targets
-    # Create walls
-    walls = [[True if x == 0 or x == (SCREEN_WIDTH//CELL_SIZE)-1 else False for y in range(SCREEN_HEIGHT//CELL_SIZE)] for x in range(SCREEN_WIDTH//CELL_SIZE)]
-    for x in range(SCREEN_WIDTH//CELL_SIZE):
-        for y in range(SCREEN_HEIGHT//CELL_SIZE):
-            if walls[x][y]:
-                Wall(x, y)
-    
-    # Create player
-    player = Player(3, 2)
-    
-    # Create boxes and targets
-    boxes = [Box(2,2), Box(3,3)]
-    targets = [(1,1), (4,4)]
-    for box in boxes:
-        if (box.x, box.y) in targets:
-            box.target = True
+    global targets
+    # Example level setup (adjust as needed)
+    boxes = []
+    targets = [(1, 1), (2, 3)]  # Define target positions
 
-def draw_grid():
-    for x in range(0, SCREEN_WIDTH, CELL_SIZE):
-        pygame.draw.line(screen, BLACK, (x, 0), (x, SCREEN_HEIGHT))
-    for y in range(0, SCREEN_HEIGHT, CELL_SIZE):
-        pygame.draw.line(screen, BLACK, (0, y), (SCREEN_WIDTH, y))
+    # Add some boxes (example positions)
+    boxes.append(Box(0, 1))
+    boxes.append(Box(1, 2))
+
+    player = Player(0, 0)
+
+    return boxes, player
 
 def check_win():
-    return all((box.x, box.y) in targets for box in boxes)
+    for box in boxes:
+        if (box.x, box.y) not in targets:
+            return False
+    return True
 
-def move_player(dx, dy):
-    new_x = player.x + dx
-    new_y = player.y + dy
-    
-    # Check if moving into a wall or box
-    blocked = False
-    for entity in [player] + walls:
-        if isinstance(entity, Wall) and (new_x == entity.x and new_y == entity.y):
-            blocked = True
-            break
-    
-    if not blocked:
-        for i, box in enumerate(boxes):
-            if box.x == player.x + dx and box.y == player.y + dy:
-                # Try to push box
-                next_cell_x = box.x + dx
-                next_cell_y = box.y + dy
-                can_push = True
-                
-                # Check if pushing into wall or another box
-                for e in walls + boxes:
-                    if isinstance(e, Wall) and (next_cell_x == e.x and next_cell_y == e.y):
-                        can_push = False
-                        break
-                    if isinstance(e, Box) and (e != box) and (next_cell_x == e.x and next_cell_y == e.y):
-                        can_push = False
-                        break
-                
-                if can_push:
-                    boxes[i].x += dx
-                    boxes[i].y += dy
-                    blocked = True  # Prevent player from moving through pushed box
-        
-        if not blocked:
-            player.x = new_x
-            player.y = new_y
+# Set up the level
+boxes, player = create_level()
 
-# Game setup
-walls = []
-boxes = []
-targets = []
-create_level()
+# Main game loop
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+pygame.display.set_caption("Box Puzzle Game")
 
-while True:
-    screen.fill(WHITE)
-    
+clock = pygame.time.Clock()
+
+running = True
+while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
-            pygame.quit()
-            sys.exit()
+            running = False
         elif event.type == pygame.KEYDOWN:
-            dx, dy = 0, 0
-            if (event.key == pygame.K_LEFT or event.key == ord('a')):
-                dx = -1
-            elif (event.key == pygame.K_RIGHT or event.key == ord('d')):
-                dx = 1
-            elif (event.key == pygame.K_UP or event.key == ord('w')):
-                dy = -1
-            elif (event.key == pygame.K_DOWN or event.key == ord('s')):
-                dy = 1
-            
-            move_player(dx, dy)
-    
-    # Draw all elements
-    draw_grid()
-    player.draw()
-    
+            # Handle player movement (example)
+            new_x, new_y = player.x, player.y
+            if event.key == pygame.K_LEFT and new_x > 0:
+                new_x -= 1
+            elif event.key == pygame.K_RIGHT and new_x < (SCREEN_WIDTH // CELL_SIZE) - 1:
+                new_x += 1
+            elif event.key == pygame.K_UP and new_y > 0:
+                new_y -= 1
+            elif event.key == pygame.K_DOWN and new_y < (SCREEN_HEIGHT // CELL_SIZE) - 1:
+                new_y += 1
+
+            # Check if movement affects any boxes
+            moved = False
+            for box in boxes:
+                if (box.x, box.y) == (new_x, new_y):
+                    # Try to push the box
+                    next_x, next_y = new_x + (player.x - box.x), new_y + (player.y - box.y)
+                    if 0 <= next_x < (SCREEN_WIDTH // CELL_SIZE) and 0 <= next_y < (SCREEN_HEIGHT // CELL_SIZE):
+                        if not any((b.x == next_x and b.y == next_y) for b in boxes if b != box):
+                            box.x, box.y = next_x, next_y
+                            moved = True
+
+            # Only move player if movement didn't result in pushing a box (or space is empty)
+            if not moved:
+                player.x, player.y = new_x, new_y
+
+    screen.fill(WHITE)
+
+    draw_grid(screen)
+
     for box in boxes:
-        box.draw()
-    
-    for wall in walls:
-        wall.draw()
-    
+        box.draw(screen)
+
+    player.draw(screen)
+
+    # Update each box's target attribute based on current position
+    for box in boxes:
+        box.target = (box.x, box.y) in targets
+
+    # Check if all boxes are on targets
     if check_win():
-        font = pygame.font.Font(None, 36)
-        text = font.render("You Win!", True, GREEN)
-        screen.blit(text, (SCREEN_WIDTH//2 - text.get_width()//2, SCREEN_HEIGHT//2 - text.get_height()//2))
-    
+        print("You Win!")
+        pygame.quit()
+        sys.exit()
+
     pygame.display.flip()
-    clock.tick(FPS)
+    clock.tick(30)
+
+pygame.quit()
+sys.exit()
