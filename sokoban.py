@@ -2,257 +2,201 @@ import pygame
 from pygame.locals import *
 import sys
 
+# Initialize Pygame
 pygame.init()
 
-# Game constants
-CELL_SIZE = 40
-WALL_WIDTH = 20
-PLAYER_RADIUS = 15
-BOX_SIZE = 30
-TARGET_RADIUS = 15
+# Set up the screen
+WIDTH = 800
+HEIGHT = 600
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Sokoban")
 
 # Colors
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
-BLUE = (0, 0, 255)
-GREEN = (0, 255, 0)
 RED = (255, 0, 0)
+GREEN = (0, 255, 0)
+BLUE = (0, 0, 255)
+GRAY = (128, 128, 128)
 
-# Screen setup
-SCREEN_WIDTH = 8 * CELL_SIZE
-SCREEN_HEIGHT = 6 * CELL_SIZE
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption("Sokoban")
+# Tile size
+TILE_SIZE = 32
 
-# Clock for frame rate
+# Directions
+UP = (0, -1)
+DOWN = (0, 1)
+LEFT = (-1, 0)
+RIGHT = (1, 0)
+
+# Player and box properties
+PLAYER_SPEED = 5
+BOX_SPEED = 4
+
+class Player:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.direction = None
+        self.speed = PLAYER_SPEED
+        
+    def move(self, dx=0, dy=0):
+        self.x += dx * self.speed
+        self.y += dy * self.speed
+        
+    def draw(self):
+        pygame.draw.circle(screen, BLUE, (int(self.x), int(self.y)), TILE_SIZE // 2)
+
+class Box:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.moving = False
+        self.speed = BOX_SPEED
+        
+    def move(self, dx=0, dy=0):
+        if self.moving:
+            self.x += dx * self.speed
+            self.y += dy * self.speed
+            
+    def draw(self):
+        pygame.draw.rect(screen, GREEN, (self.x - TILE_SIZE//2, self.y - TILE_SIZE//2, TILE_SIZE, TILE_SIZE))
+
+class SokobanGame:
+    def __init__(self):
+        self.levels = [
+            [
+                "#########",
+                "# @  B #",
+                "#. .   #",
+                "#########"
+            ],
+            [
+                "##########",
+                "# @ B   #",
+                "#  . B .#",
+                "#.      #",
+                "##########"
+            ],
+            [
+                "#############",
+                "# @   B     #",
+                "#  B .  B   #",
+                "#.    .    .#",
+                "#############"
+            ]
+        ]
+        
+        self.current_level = 0
+        self.player = None
+        self.boxes = []
+        self.targets = []
+        self.walls = []
+        
+    def load_level(self):
+        level = self.levels[self.current_level]
+        self.player = None
+        self.boxes.clear()
+        self.targets.clear()
+        self.walls.clear()
+        
+        for y in range(len(level)):
+            for x in range(len(level[y])):
+                pos_x = x * TILE_SIZE + (TILE_SIZE // 2)
+                pos_y = y * TILE_SIZE + (TILE_SIZE // 2)
+                
+                if level[y][x] == '#':
+                    self.walls.append((pos_x, pos_y))
+                elif level[y][x] == '@':
+                    self.player = Player(pos_x, pos_y)
+                elif level[y][x] == 'B':
+                    self.boxes.append(Box(pos_x, pos_y))
+                elif level[y][x] == '.':
+                    self.targets.append((pos_x, pos_y))
+        
+    def check_win(self):
+        for box in self.boxes:
+            if (box.x, box.y) not in [(t[0], t[1]) for t in self.targets]:
+                return False
+        return True
+        
+    def draw_grid(self):
+        for y in range(HEIGHT // TILE_SIZE + 1):
+            pygame.draw.line(screen, GRAY, (0, y * TILE_SIZE), (WIDTH, y * TILE_SIZE))
+        for x in range(WIDTH // TILE_SIZE + 1):
+            pygame.draw.line(screen, GRAY, (x * TILE_SIZE, 0), (x * TILE_SIZE, HEIGHT))
+
+# Initialize game
+game = SokobanGame()
 clock = pygame.time.Clock()
 
-# Player properties
-player_pos = {
-    "x": 2 * CELL_SIZE,
-    "y": 2 * CELL_SIZE
-}
-player_speed = 3
-
-# Level setup
-walls = []
-boxes = []
-targets = []
-
-# Define level layout (1: wall, 2: box, 3: target)
-level_layout = [
-    [1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 0, 0, 0, 0, 0, 0, 1],
-    [1, 0, 2, 3, 2, 0, 0, 1],
-    [1, 0, 1, 1, 1, 1, 0, 1],
-    [1, 0, 0, 0, 3, 0, 0, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1]
-]
-
-# Initialize game elements
-for y in range(6):
-    for x in range(8):
-        if level_layout[y][x] == 1:
-            wall_rect = pygame.Rect(
-                x * CELL_SIZE - WALL_WIDTH // 2,
-                y * CELL_SIZE - WALL_WIDTH // 2,
-                WALL_WIDTH, WALL_WIDTH
-            )
-            walls.append(wall_rect)
-        elif level_layout[y][x] == 2:
-            box_rect = pygame.Rect(
-                x * CELL_SIZE - BOX_SIZE // 2 + CELL_SIZE % 2,
-                y * CELL_SIZE - BOX_SIZE // 2 + CELL_SIZE % 2,
-                BOX_SIZE, BOX_SIZE
-            )
-            boxes.append(box_rect)
-        elif level_layout[y][x] == 3:
-            target_center = (
-                x * CELL_SIZE,
-                y * CELL_SIZE
-            )
-            targets.append(target_center)
-
-# Movement variables
-move_x = 0
-move_y = 0
-
-def check_box_collision(player, box):
-    player_rect = pygame.Rect(
-        player["x"] - PLAYER_RADIUS*2,
-        player["y"] - PLAYER_RADIUS*2,
-        PLAYER_RADIUS*4, PLAYER_RADIUS*4
-    )
-    return player_rect.colliderect(box)
-
-def move_player(dx, dy):
-    global player_pos
-    new_x = player_pos['x'] + dx * player_speed
-    new_y = player_pos['y'] + dy * player_speed
-
-    # Check for collisions with walls
-    test_player_rect = pygame.Rect(
-        new_x - PLAYER_RADIUS*2,
-        new_y - PLAYER_RADIUS*2,
-        PLAYER_RADIUS*4, PLAYER_RADIUS*4
-    )
-    
-    collision_wall = False
-    for wall in walls:
-        if test_player_rect.colliderect(wall):
-            collision_wall = True
-    
-    # Check for collisions with boxes
-    collision_box = None
-    for i, box in enumerate(boxes):
-        if check_box_collision({'x': new_x, 'y': new_y}, box):
-            collision_box = i
-
-    if collision_wall or (collision_box is not None and not can_push_box(collision_box, dx, dy)):
-        return
-    
-    player_pos['x'] = new_x
-    player_pos['y'] = new_y
-
-    # Move boxes if pushed
-    for i, box in enumerate(boxes):
-        if check_box_collision(player_pos, box) and collision_box == i:
-            new_box_x = box.x + dx * player_speed
-            new_box_y = box.y + dy * player_speed
-            test_box_rect = pygame.Rect(
-                new_box_x - BOX_SIZE // 2,
-                new_box_y - BOX_SIZE // 2,
-                BOX_SIZE, BOX_SIZE
-            )
-            
-            # Check if new box position is valid
-            valid_move = True
-            for wall in walls:
-                if test_box_rect.colliderect(wall):
-                    valid_move = False
-            
-            for other_box in boxes[:i] + boxes[i+1:]:
-                if test_box_rect.colliderect(other_box):
-                    valid_move = False
-
-            if valid_move:
-                box.x = new_box_x
-                box.y = new_box_y
-
-def can_push_box(box_index, dx, dy):
-    box = boxes[box_index]
-    new_box_x = box.x + dx * player_speed
-    new_box_y = box.y + dy * player_speed
-    test_box_rect = pygame.Rect(
-        new_box_x - BOX_SIZE // 2,
-        new_box_y - BOX_SIZE // 2,
-        BOX_SIZE, BOX_SIZE
-    )
-    
-    # Check if new position is valid
-    for wall in walls:
-        if test_box_rect.colliderect(wall):
-            return False
-    
-    for other_box in boxes[:box_index] + boxes[box_index+1:]:
-        if test_box_rect.colliderect(other_box):
-            return False
-    
-    return True
-
-def draw_game():
-    screen.fill(BLACK)
-    
-    # Draw walls
-    for wall in walls:
-        pygame.draw.rect(screen, WHITE, wall)
-    
-    # Draw boxes
-    for box in boxes:
-        color = GREEN if is_on_target(box) else RED
-        pygame.draw.rect(screen, color, box)
-    
-    # Draw targets
-    for target in targets:
-        pygame.draw.circle(screen, BLUE, (int(target[0]), int(target[1])), TARGET_RADIUS, 2)
-    
-    # Draw player
-    pygame.draw.circle(
-        screen, WHITE,
-        (int(player_pos['x']), int(player_pos['y'])),
-        PLAYER_RADIUS
-    )
-
-def is_on_target(box):
-    for target in targets:
-        if abs(box.x - target[0]) < BOX_SIZE // 2 and abs(box.y - target[1]) < BOX_SIZE // 2:
-            return True
-    return False
-
-def check_win():
-    for box in boxes:
-        if not is_on_target(box):
-            return False
-    return True
-
-running = True
-won = False
-
-while running:
-    # Event handling
-    for event in pygame.event.get():
-        if event.type == QUIT:
-            running = False
-        elif event.type == KEYDOWN:
-            if event.key == K_ESCAPE:
-                running = False
-            elif event.key == K_LEFT or event.key == K_a:
-                move_x = -1
-            elif event.key == K_RIGHT or event.key == K_d:
-                move_x = 1
-            elif event.key == K_UP or event.key == K_w:
-                move_y = -1
-            elif event.key == K_DOWN or event.key == K_s:
-                move_y = 1
-        elif event.type == KEYUP:
-            if event.key in [K_LEFT, K_RIGHT, K_a, K_d]:
-                move_x = 0
-            elif event.key in [K_UP, K_DOWN, K_w, K_s]:
-                move_y = 0
-    
-    # Update player position
-    move_player(move_x, move_y)
-    
-    # Draw game state
-    draw_game()
-    
-    # Check win condition
-    if not won and check_win():
-        won = True
-        font = pygame.font.Font(None, 36)
-        text = font.render("You Win!", True, GREEN)
-        screen.blit(text, (SCREEN_WIDTH//2 - 50, SCREEN_HEIGHT//2))
-    
-    # Reset game on space press after win
-    if won:
+def main():
+    while True:
+        screen.fill(BLACK)
+        
+        # Handle events
+        for event in pygame.event.get():
+            if event.type == QUIT:
+                pygame.quit()
+                sys.exit()
+                
+        # Get input
         keys = pygame.key.get_pressed()
-        if keys[K_SPACE]:
-            boxes.clear()
-            for y in range(6):
-                for x in range(8):
-                    if level_layout[y][x] == 2:
-                        box_rect = pygame.Rect(
-                            x * CELL_SIZE - BOX_SIZE // 2 + CELL_SIZE % 2,
-                            y * CELL_SIZE - BOX_SIZE // 2 + CELL_SIZE % 2,
-                            BOX_SIZE, BOX_SIZE
-                        )
-                        boxes.append(box_rect)
-            player_pos['x'] = 2 * CELL_SIZE
-            player_pos['y'] = 2 * CELL_SIZE
-            won = False
-    
-    pygame.display.flip()
-    clock.tick(60)
+        dx, dy = 0, 0
+        
+        if keys[K_UP] or keys[K_w]:
+            dy = -1
+        elif keys[K_DOWN] or keys[K_s]:
+            dy = 1
+        if keys[K_LEFT] or keys[K_a]:
+            dx = -1
+        elif keys[K_RIGHT] or keys[K_d]:
+            dx = 1
+            
+        # Move player and boxes
+        game.player.move(dx * game.player.speed, dy * game.player.speed)
+        
+        for box in game.boxes:
+            if not box.moving:
+                box_x_dist = abs(box.x - game.player.x)
+                box_y_dist = abs(box.y - game.player.y)
+                
+                if (box_x_dist < TILE_SIZE and box_y_dist < TILE_SIZE):
+                    if dx != 0 or dy != 0:
+                        box.direction = (dx, dy)
+                        box.moving = True
+                        
+            if box.moving:
+                box.move(*box.direction)
+        
+        # Draw everything
+        game.draw_grid()
+        
+        for wall in game.walls:
+            pygame.draw.rect(screen, GRAY, (wall[0] - TILE_SIZE//2, wall[1] - TILE_SIZE//2, TILE_SIZE, TILE_SIZE))
+            
+        for target in game.targets:
+            pygame.draw.circle(screen, RED, (target[0], target[1]), TILE_SIZE // 3)
+            
+        for box in game.boxes:
+            box.draw()
+        
+        game.player.draw()
+        
+        # Check win condition
+        if game.check_win():
+            print("Level complete!")
+            game.current_level += 1
+            
+            if game.current_level >= len(game.levels):
+                print("Congratulations! You won the game!")
+                pygame.quit()
+                sys.exit()
+                
+            game.load_level()
+            
+        # Update screen
+        clock.tick(60)
+        pygame.display.flip()
 
-pygame.quit()
-sys.exit()
+if __name__ == "__main__":
+    main()
